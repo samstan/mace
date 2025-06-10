@@ -12,6 +12,8 @@ import torch.distributed as dist
 from mace.tools import TensorDict
 from mace.tools.torch_geometric import Batch
 
+from collections import defaultdict
+
 
 # ------------------------------------------------------------------------------
 # Helper function for loss reduction that handles DDP correction
@@ -46,6 +48,39 @@ def reduce_loss(raw_loss: torch.Tensor, ddp: Optional[bool] = None) -> torch.Ten
 # ------------------------------------------------------------------------------
 # Energy Loss Functions
 # ------------------------------------------------------------------------------
+def esr_energy(
+    ref: Batch, pred: TensorDict, ddp: Optional[bool] = None
+) -> torch.Tensor:
+
+    # probs = torch.softmax(pred['energy'], dim=0)
+    # return torch.dot(ref['energy'],probs)
+    batch_size = ref["energy"].shape[0]
+    elements = torch.split(ref["node_attrs"], ref["node_attrs"].shape[0]//batch_size)
+
+    unique = torch.unique(torch.stack(elements), dim = 0)
+
+    unique_map = {}
+    
+    for i, tensor in enumerate(elements):
+        for unique_tensor in unique:
+            if torch.equal(tensor, unique_tensor):
+                unique_map[i] = unique_tensor.numpy().tobytes()
+                break
+    
+    # Group b values
+    groups = defaultdict(list)
+    for i in range(len(elements)):
+        groups[unique_map[i]].append(i)
+
+    # print(groups)
+
+    
+    loss = 0
+    for key in groups:
+        probs = torch.softmax(pred['energy'][groups[key]], dim=0)
+        loss += torch.dot(probs, ref['energy'][groups[key]])
+
+    return loss
 
 
 def mean_squared_error_energy(
@@ -220,6 +255,39 @@ def conditional_huber_forces(
 # ------------------------------------------------------------------------------
 # Loss Modules Combining Multiple Quantities
 # ------------------------------------------------------------------------------
+
+class EnergyESRLoss(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(
+        self, ref: Batch, pred: TensorDict, ddp: Optional[bool] = None
+    ) -> torch.Tensor:
+        loss_energy = esr_energy(ref, pred, ddp)
+        return loss_energy
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}"
+        )
+
+
+
+class EnergyMSELoss(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(
+        self, ref: Batch, pred: TensorDict, ddp: Optional[bool] = None
+    ) -> torch.Tensor:
+        loss_energy = mean_squared_error_energy(ref, pred, ddp)
+        return loss_energy
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}"
+        )
+
 
 
 class WeightedEnergyForcesLoss(torch.nn.Module):

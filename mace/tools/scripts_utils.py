@@ -605,6 +605,10 @@ def get_loss_fn(
             forces_weight=args.forces_weight,
             dipole_weight=args.dipole_weight,
         )
+    elif args.loss == "mse":
+        loss_fn = modules.EnergyMSELoss()
+    elif args.loss == "esr":
+        loss_fn = modules.EnergyESRLoss()
     else:
         loss_fn = modules.WeightedEnergyForcesLoss(energy_weight=1.0, forces_weight=1.0)
     return loss_fn
