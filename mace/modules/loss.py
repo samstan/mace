@@ -54,23 +54,29 @@ def esr_energy(
 
     # probs = torch.softmax(pred['energy'], dim=0)
     # return torch.dot(ref['energy'],probs)
-    batch_size = ref["energy"].shape[0]
-    elements = torch.split(ref["node_attrs"], ref["node_attrs"].shape[0]//batch_size)
+    elements = torch.split(ref["node_attrs"], list(torch.diff(ref['ptr'])))
 
-    unique = torch.unique(torch.stack(elements), dim = 0)
-
-    unique_map = {}
-    
-    for i, tensor in enumerate(elements):
-        for unique_tensor in unique:
-            if torch.equal(tensor, unique_tensor):
-                unique_map[i] = unique_tensor.numpy().tobytes()
-                break
-    
-    # Group b values
     groups = defaultdict(list)
-    for i in range(len(elements)):
-        groups[unique_map[i]].append(i)
+
+    for i, tensor in enumerate(elements):
+        # Convert the tensor to a tuple of values and shape to ensure uniqueness
+        key = (tuple(tensor.flatten().tolist()), tuple(tensor.shape))
+        groups[key].append(i)
+
+    # unique = torch.unique(torch.stack(elements), dim = 0)
+
+    # unique_map = {}
+    
+    # for i, tensor in enumerate(elements):
+    #     for unique_tensor in unique:
+    #         if torch.equal(tensor, unique_tensor):
+    #             unique_map[i] = unique_tensor.numpy().tobytes()
+    #             break
+    
+    # # Group b values
+    # groups = defaultdict(list)
+    # for i in range(len(elements)):
+    #     groups[unique_map[i]].append(i)
 
     # print(groups)
 
